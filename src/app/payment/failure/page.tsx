@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function PaymentFailurePage() {
+function PaymentFailureContent() {
     const searchParams = useSearchParams();
     const [orderId, setOrderId] = useState<string | null>(null);
     const [reason, setReason] = useState<string | null>(null);
@@ -150,6 +150,21 @@ export default function PaymentFailurePage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function PaymentFailurePage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-gradient-to-b from-lightBg to-white py-12 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="spinner border-4 border-gray-200 border-t-primary rounded-full w-12 h-12 animate-spin mx-auto mb-4" />
+                    <p className="text-gray-600">Loading...</p>
+                </div>
+            </div>
+        }>
+            <PaymentFailureContent />
+        </Suspense>
     );
 }
 

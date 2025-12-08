@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 
 // Decrypt SabPaisa response
 async function decryptSabPaisaResponse(encryptedHex: string, authKey: string, authIV: string): Promise<any> {
@@ -17,7 +18,6 @@ async function decryptSabPaisaResponse(encryptedHex: string, authKey: string, au
         const hmacKeyBuffer = Buffer.from(authIV, "base64"); // authIV is actually the HMAC key
 
         // Verify HMAC
-        const crypto = require("crypto");
         const hmacCalculated = crypto
             .createHmac("sha384", hmacKeyBuffer)
             .update(encryptedBuffer.subarray(48)) // Everything after HMAC
