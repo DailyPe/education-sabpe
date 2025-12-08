@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { getAdminDb } from "@/firebase/admin";
-import { FieldValue } from 'firebase-admin/firestore';
+import { db } from "@/../firebase/client";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 // Decrypt SabPaisa response
 async function decryptSabPaisaResponse(encryptedHex: string, authKey: string, authIV: string): Promise<any> {
@@ -118,10 +118,8 @@ async function handleReturn(request: NextRequest) {
             payerName: decryptedData.payerName || decryptedData.PAYER_NAME,
         });
 
-        // Save to Firestore
+        // Save to Firestore using client SDK
         try {
-            const db = getAdminDb();
-
             const firestoreData = {
                 orderId,
                 status: isSuccess ? "SUCCESS" : "FAILED",
@@ -135,16 +133,17 @@ async function handleReturn(request: NextRequest) {
                 sabpaisaTxnId: decryptedData.sabpaisaTxnId || decryptedData.SABPAISA_TXN_ID || null,
                 paymentMode: decryptedData.paymentMode || decryptedData.PAYMENT_MODE || null,
                 statusMessage: decryptedData.statusMessage || decryptedData.STATUS_MESSAGE || null,
-                timestamp: FieldValue.serverTimestamp(),
+                timestamp: serverTimestamp(),
                 returnReceivedAt: new Date().toISOString(),
-                rawData: decryptedData, // Store complete raw data for reference
+                rawData: decryptedData,
             };
 
-            await db.collection("payments").doc(orderId).set(firestoreData, { merge: true });
+            const paymentRef = doc(db, "payments", orderId);
+            await setDoc(paymentRef, firestoreData, { merge: true });
 
-            console.log(`Payment data saved to Firestore: ${orderId}`);
+            console.log(`✅ Payment data saved to Firestore: ${orderId}`);
         } catch (firestoreError) {
-            console.error("Failed to save to Firestore:", firestoreError);
+            console.error("⚠️ Failed to save to Firestore:", firestoreError);
             // Continue with redirect even if Firestore save fails
         }
 

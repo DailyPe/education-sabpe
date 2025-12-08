@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { getAdminDb } from "@/firebase/admin";
-import { FieldValue } from 'firebase-admin/firestore';
+import { db } from "@/../firebase/client";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 // Decrypt SabPaisa response
 async function decryptSabPaisaResponse(encryptedHex: string, authKey: string, authIV: string): Promise<any> {
@@ -143,22 +143,21 @@ export async function POST(request: NextRequest) {
             sabpaisaTxnId: paymentData.sabpaisaTxnId || paymentData.SABPAISA_TXN_ID || null,
             paymentMode: paymentData.paymentMode || paymentData.PAYMENT_MODE || null,
             statusMessage: paymentData.statusMessage || paymentData.STATUS_MESSAGE || null,
-            timestamp: FieldValue.serverTimestamp(),
+            timestamp: serverTimestamp(),
             callbackReceivedAt: new Date().toISOString(),
-            rawData: paymentData, // Store complete raw data for reference
+            rawData: paymentData,
         };
 
-        // Save to Firestore
+        // Save to Firestore using client SDK
         try {
-            const db = getAdminDb();
-            await db.collection("payments").doc(orderId).set(firestoreData, { merge: true });
+            const paymentRef = doc(db, "payments", orderId);
+            await setDoc(paymentRef, firestoreData, { merge: true });
 
-            console.log(`Payment data saved to Firestore: ${orderId}`);
+            console.log(`✅ Payment data saved to Firestore: ${orderId}`);
             console.log("Payment status:", isSuccess ? "SUCCESS" : "FAILED");
         } catch (firestoreError) {
-            console.error("Failed to save to Firestore:", firestoreError);
+            console.error("⚠️ Failed to save to Firestore:", firestoreError);
             // Still return success to SabPaisa to avoid retries
-            // but log the error for investigation
         }
 
         // Return success to SabPaisa
