@@ -10,6 +10,7 @@ export default function Home() {
             <p className="text-xl md:text-2xl mb-10 text-textLight leading-relaxed">Pay tuition and school fees instantly. 100% secure transactions with real-time confirmations.</p>
             <div className="flex flex-col sm:flex-row gap-5 justify-center md:justify-start">
               <Link href="/pay-premium" className="bg-accent hover:bg-secondary text-dark font-bold py-4 px-10 rounded-full text-lg text-center transition duration-300 shadow-lg">Pay Fees Now</Link>
+              <Link href="/add-funds" className="bg-white hover:bg-gray-100 text-primary font-bold py-4 px-10 rounded-full text-lg text-center transition duration-300 shadow-lg border-2 border-accent">Add Funds</Link>
             </div>
           </div>
         </div>
