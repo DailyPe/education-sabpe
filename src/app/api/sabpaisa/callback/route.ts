@@ -91,16 +91,9 @@ export async function POST(request: NextRequest) {
 
         // Decrypt if encrypted response is present
         if (encResponse) {
-            const authKey = process.env.SABPAISA_AUTH_KEY;
-            const authIV = process.env.SABPAISA_AUTH_IV;
-
-            if (!authKey || !authIV) {
-                console.error("Missing encryption keys in environment");
-                return NextResponse.json(
-                    { success: false, error: "Configuration error" },
-                    { status: 500 }
-                );
-            }
+            // Hardcoded authentication keys
+            const authKey = "U9hMxZyANd0RxgMlTRYW63hCHWKcLRkyXWmhEtpRQgo=";
+            const authIV = "XVJbgKaztKMJNYJicBCkKkAi5gFFsQAorasz4prd6k6RfNiMCuPIl7AzJ/x9PnAL";
 
             try {
                 paymentData = await decryptSabPaisaResponse(encResponse, authKey, authIV);

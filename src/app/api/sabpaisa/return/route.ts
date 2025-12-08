@@ -91,14 +91,9 @@ async function handleReturn(request: NextRequest) {
 
         console.log("Received encrypted response, length:", encResponse.length);
 
-        // Get decryption keys from environment
-        const authKey = process.env.SABPAISA_AUTH_KEY;
-        const authIV = process.env.SABPAISA_AUTH_IV;
-
-        if (!authKey || !authIV) {
-            console.error("Missing encryption keys in environment");
-            return NextResponse.redirect(new URL("/payment/failure?error=config", request.url));
-        }
+        // Hardcoded authentication keys
+        const authKey = "U9hMxZyANd0RxgMlTRYW63hCHWKcLRkyXWmhEtpRQgo=";
+        const authIV = "XVJbgKaztKMJNYJicBCkKkAi5gFFsQAorasz4prd6k6RfNiMCuPIl7AzJ/x9PnAL";
 
         // Decrypt the response
         const decryptedData = await decryptSabPaisaResponse(encResponse, authKey, authIV);
