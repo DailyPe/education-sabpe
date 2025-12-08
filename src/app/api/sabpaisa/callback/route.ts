@@ -1,4 +1,59 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
+import { getAdminDb } from "@/firebase/admin";
+import { FieldValue } from 'firebase-admin/firestore';
+
+// Decrypt SabPaisa response
+async function decryptSabPaisaResponse(encryptedHex: string, authKey: string, authIV: string): Promise<any> {
+    try {
+        // Convert hex string to buffer
+        const encryptedBuffer = Buffer.from(encryptedHex, "hex");
+
+        // Extract components:
+        // HMAC (48 bytes) + IV (12 bytes) + EncryptedData + Tag (16 bytes)
+        const hmacReceived = encryptedBuffer.subarray(0, 48);
+        const iv = encryptedBuffer.subarray(48, 60);
+        const encryptedDataWithTag = encryptedBuffer.subarray(60);
+
+        // Decode keys from base64
+        const keyBuffer = Buffer.from(authKey, "base64");
+        const hmacKeyBuffer = Buffer.from(authIV, "base64"); // authIV is actually the HMAC key
+
+        // Verify HMAC
+        const hmacCalculated = crypto
+            .createHmac("sha384", hmacKeyBuffer)
+            .update(encryptedBuffer.subarray(48)) // Everything after HMAC
+            .digest();
+
+        if (!hmacReceived.equals(hmacCalculated)) {
+            throw new Error("HMAC verification failed");
+        }
+
+        // Decrypt using AES-GCM
+        const decipher = crypto.createDecipheriv("aes-256-gcm", keyBuffer, iv);
+
+        // Extract tag (last 16 bytes) and encrypted data
+        const tag = encryptedDataWithTag.subarray(-16);
+        const encryptedData = encryptedDataWithTag.subarray(0, -16);
+
+        decipher.setAuthTag(tag);
+
+        let decrypted = decipher.update(encryptedData, undefined, "utf8");
+        decrypted += decipher.final("utf8");
+
+        // Parse the decrypted string (URLSearchParams format)
+        const params = new URLSearchParams(decrypted);
+        const result: any = {};
+        params.forEach((value, key) => {
+            result[key] = value;
+        });
+
+        return result;
+    } catch (error) {
+        console.error("Decryption error:", error);
+        throw error;
+    }
+}
 
 export async function POST(request: NextRequest) {
     try {
@@ -32,21 +87,93 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // TODO: Decrypt if encrypted, or use jsonData directly
-        // TODO: Save to Firestore
-        // For now, just log and return success
+        let paymentData: any = null;
 
-        console.log("Callback data received:", {
-            hasEncrypted: !!encResponse,
-            hasJson: !!jsonData,
-            encLength: encResponse?.length || 0,
-        });
+        // Decrypt if encrypted response is present
+        if (encResponse) {
+            const authKey = process.env.SABPAISA_AUTH_KEY;
+            const authIV = process.env.SABPAISA_AUTH_IV;
+
+            if (!authKey || !authIV) {
+                console.error("Missing encryption keys in environment");
+                return NextResponse.json(
+                    { success: false, error: "Configuration error" },
+                    { status: 500 }
+                );
+            }
+
+            try {
+                paymentData = await decryptSabPaisaResponse(encResponse, authKey, authIV);
+                console.log("Decrypted payment data:", paymentData);
+            } catch (error) {
+                console.error("Failed to decrypt callback data:", error);
+                return NextResponse.json(
+                    { success: false, error: "Decryption failed" },
+                    { status: 400 }
+                );
+            }
+        } else if (jsonData) {
+            // Use JSON data directly if no encryption
+            paymentData = jsonData;
+        }
+
+        // Extract order ID (try different field names)
+        const orderId =
+            paymentData.clientTxnId ||
+            paymentData.CLIENT_TXN_ID ||
+            paymentData.orderId ||
+            paymentData.ORDER_ID ||
+            paymentData.txnId ||
+            paymentData.TXN_ID ||
+            `payment_${Date.now()}`;
+
+        // Determine payment status
+        const status = (paymentData.status || paymentData.STATUS || "").toUpperCase();
+        const responseCode = paymentData.responseCode || paymentData.RESPONSE_CODE;
+        const isSuccess =
+            status.includes("SUCCESS") ||
+            status.includes("COMPLETED") ||
+            status.includes("APPROVED") ||
+            responseCode === "000";
+
+        // Prepare data for Firestore
+        const firestoreData = {
+            orderId,
+            status: isSuccess ? "SUCCESS" : "FAILED",
+            rawStatus: status,
+            responseCode: responseCode || null,
+            amount: paymentData.amount || paymentData.AMOUNT || "0",
+            payerName: paymentData.payerName || paymentData.PAYER_NAME || null,
+            payerEmail: paymentData.payerEmail || paymentData.PAYER_EMAIL || null,
+            payerMobile: paymentData.payerMobile || paymentData.PAYER_MOBILE || null,
+            bankTxnId: paymentData.bankTxnId || paymentData.BANK_TXN_ID || null,
+            sabpaisaTxnId: paymentData.sabpaisaTxnId || paymentData.SABPAISA_TXN_ID || null,
+            paymentMode: paymentData.paymentMode || paymentData.PAYMENT_MODE || null,
+            statusMessage: paymentData.statusMessage || paymentData.STATUS_MESSAGE || null,
+            timestamp: FieldValue.serverTimestamp(),
+            callbackReceivedAt: new Date().toISOString(),
+            rawData: paymentData, // Store complete raw data for reference
+        };
+
+        // Save to Firestore
+        try {
+            const db = getAdminDb();
+            await db.collection("payments").doc(orderId).set(firestoreData, { merge: true });
+
+            console.log(`Payment data saved to Firestore: ${orderId}`);
+            console.log("Payment status:", isSuccess ? "SUCCESS" : "FAILED");
+        } catch (firestoreError) {
+            console.error("Failed to save to Firestore:", firestoreError);
+            // Still return success to SabPaisa to avoid retries
+            // but log the error for investigation
+        }
 
         // Return success to SabPaisa
         return NextResponse.json(
             {
                 success: true,
-                message: "Callback received and processed"
+                message: "Callback received and processed",
+                orderId: orderId
             },
             { status: 200 }
         );

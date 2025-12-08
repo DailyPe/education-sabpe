@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { getAdminDb } from "@/firebase/admin";
+import { FieldValue } from 'firebase-admin/firestore';
 
 // Decrypt SabPaisa response
 async function decryptSabPaisaResponse(encryptedHex: string, authKey: string, authIV: string): Promise<any> {
@@ -105,7 +107,7 @@ async function handleReturn(request: NextRequest) {
         // Determine success or failure
         const status = (decryptedData.status || decryptedData.STATUS || "").toUpperCase();
         const responseCode = decryptedData.responseCode || decryptedData.RESPONSE_CODE;
-        const orderId = decryptedData.clientTxnId || decryptedData.CLIENT_TXN_ID || "unknown";
+        const orderId = decryptedData.clientTxnId || decryptedData.CLIENT_TXN_ID || `payment_${Date.now()}`;
 
         const isSuccess =
             status.includes("SUCCESS") ||
@@ -113,7 +115,6 @@ async function handleReturn(request: NextRequest) {
             status.includes("APPROVED") ||
             responseCode === "000";
 
-        // TODO: Save to Firestore here
         console.log("Payment result:", {
             orderId,
             status,
@@ -121,6 +122,36 @@ async function handleReturn(request: NextRequest) {
             amount: decryptedData.amount || decryptedData.AMOUNT,
             payerName: decryptedData.payerName || decryptedData.PAYER_NAME,
         });
+
+        // Save to Firestore
+        try {
+            const db = getAdminDb();
+
+            const firestoreData = {
+                orderId,
+                status: isSuccess ? "SUCCESS" : "FAILED",
+                rawStatus: status,
+                responseCode: responseCode || null,
+                amount: decryptedData.amount || decryptedData.AMOUNT || "0",
+                payerName: decryptedData.payerName || decryptedData.PAYER_NAME || null,
+                payerEmail: decryptedData.payerEmail || decryptedData.PAYER_EMAIL || null,
+                payerMobile: decryptedData.payerMobile || decryptedData.PAYER_MOBILE || null,
+                bankTxnId: decryptedData.bankTxnId || decryptedData.BANK_TXN_ID || null,
+                sabpaisaTxnId: decryptedData.sabpaisaTxnId || decryptedData.SABPAISA_TXN_ID || null,
+                paymentMode: decryptedData.paymentMode || decryptedData.PAYMENT_MODE || null,
+                statusMessage: decryptedData.statusMessage || decryptedData.STATUS_MESSAGE || null,
+                timestamp: FieldValue.serverTimestamp(),
+                returnReceivedAt: new Date().toISOString(),
+                rawData: decryptedData, // Store complete raw data for reference
+            };
+
+            await db.collection("payments").doc(orderId).set(firestoreData, { merge: true });
+
+            console.log(`Payment data saved to Firestore: ${orderId}`);
+        } catch (firestoreError) {
+            console.error("Failed to save to Firestore:", firestoreError);
+            // Continue with redirect even if Firestore save fails
+        }
 
         // Redirect to appropriate page
         if (isSuccess) {
