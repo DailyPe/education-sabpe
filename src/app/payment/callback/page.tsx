@@ -44,7 +44,6 @@ function CallbackContent() {
                 setStatus(result.data.isSuccess ? "success" : "failure");
 
             } catch (err: any) {
-                console.error("Callback processing error:", err);
                 setStatus("failure");
                 setError(err.message || "An error occurred");
             }

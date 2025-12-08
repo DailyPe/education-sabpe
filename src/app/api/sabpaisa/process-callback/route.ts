@@ -62,7 +62,6 @@ export async function POST(request: NextRequest) {
 
         // Decrypt response
         const decryptedData = await decryptSabPaisaResponse(encResponse, authKey, authIV);
-        console.log("Decrypted payment data:", decryptedData);
 
         // Extract order ID and determine status
         const orderId =
@@ -104,9 +103,8 @@ export async function POST(request: NextRequest) {
         try {
             const paymentRef = doc(db, "payments", orderId);
             await setDoc(paymentRef, firestoreData, { merge: true });
-            console.log(`✅ Payment saved to Firestore: ${orderId}, Status: ${isSuccess ? "SUCCESS" : "FAILED"}`);
         } catch (firestoreError: any) {
-            console.error("⚠️ Failed to save to Firestore:", firestoreError.message);
+            console.error("Failed to save to Firestore:", firestoreError.message);
             // Continue even if Firestore fails - payment will still show success/failure to user
         }
 
